@@ -3,6 +3,11 @@ let SearchRecList = [] //录像存放列表
 let playerList = [] //播放器存放列表
 let sessionList = [] //连接对象列表
 let useHttps = true //是否使用https和wss
+let isremoteing = false
+let remoteDeviceData= {//远处设置返回存储
+	setConfigStatu: {},
+	deviceInfo: {},
+}
 /**
  * ConnectApi p2p连接控制对象，通过配置回调方法接收p2p回调数据
  * 
@@ -21,6 +26,7 @@ const Player = {};
 	 * @return {object} session 连接状态对象
 	 */
 function GetSessionById(devid) {
+		console.log("GetSessionById进来了", sessionList);
 	for (let i = 0; i < sessionList.length; i++) {
 		// console.log("GetSessionById进来了", sessionList);
 
@@ -111,7 +117,7 @@ ConnectApi.onrecvframeex = function (api_conn, frametype, data, datalen, channel
 	//判断流的类型，0为音频帧
 	if (frametype != 0) {
 		data.recvtime = new Date().getTime();
-		playerList[api_conn.streamlist[channel].winindex].fillframe_v2(data, datalen, enc, timestamp);
+		playerList[api_conn.streamlist[channel].winindex].fillframe_v2(data, datalen, enc, timestamp, width, height, frametype);
 		// player1.fillframe_v2(data, datalen, enc, timestamp);
 	} else {
 		if (api_conn.streamlist[channel].isSound) {
@@ -121,7 +127,7 @@ ConnectApi.onrecvframeex = function (api_conn, frametype, data, datalen, channel
 };
 
 /**
- * 回放视频流回调
+ * 回放视频流回调  Playbackplay
  * @method onrecvrecframe
  * @param {object} api_conn     连接状态对象
  * @param {number} frametype    视频帧类型
@@ -133,28 +139,69 @@ ConnectApi.onrecvframeex = function (api_conn, frametype, data, datalen, channel
  * @param {number} fps 			帧率
  * @param {number} ts_ms 		这一帧的时间长度
  */
-ConnectApi.onrecvrecframe = function (api_conn, frametype, data, datalen, channel, width, height, enc, fps, ts_ms) {
-	if (api_conn.streamlist[channel].winindex == -1) {
-		return;
+var executed;
+var doOnceCode = (function(ts_ms,overTime) {
+  executed = false;
+  return function(ts_ms,overTime) {
+	if (!executed) {
+		console.log('executed',ts_ms+200>=overTime,ts_ms,ts_ms+200,overTime)
+		console.log('executed',ts_ms>=overTime,ts_ms,overTime)
+	  if(ts_ms+200>=overTime){
+		console.log(new Date(),"",new Date().getTime(),'执行保存操作',ts_ms,overTime)
+		console.log(new Date(),"",new Date().getTime(),'收集的chunks',chunks)
+		executed = true;
+		var blob = new Blob(chunks, { 'type' : 'video/mp4' });
+		var url = URL.createObjectURL(blob);
+		var a = document.createElement('a');
+		a.href = url;
+		a.download = 'video.mp4';
+		document.body.appendChild(a);
+		a.click();
+		Player.StopPlayBack(sharedevid, '', sharechannel)
+		executed = false;
+		chunks = JSON.parse(JSON.stringify([]))
+		window.overTime = null
+	  }
 	}
-	if (!api_conn.streamlist[channel].firstFrame) {
-		api_conn.streamlist[channel].firstFrame = true;
-	}
+  };
+})();
 
-	if (frametype != 0) {
-		data.recvtime = new Date().getTime();
-		// console.log(enc);
-		playerList[api_conn.streamlist[channel].winindex].fillframe_v2(data, datalen, enc, ts_ms);
-		// player1.fillframe_v2(data, datalen, enc, ts_ms);
-		// console.log('回放时间：' + new Date(ts_ms).format('yyyy-MM-dd hh:mm:ss'), ts_ms);
-		// }
-	} else {
-		if (api_conn.streamlist[channel].isSound) {
-			// console.log('输出音频流');
-			audioPlay(data, enc, datalen, width);
-			// console.log(datalen, channel, width, height, enc, fps);
-		}
-	}
+function myFunction(ts_ms,overTime) {
+  doOnceCode(ts_ms,overTime);
+}
+
+var chunks = [];
+ConnectApi.onrecvrecframe = function (api_conn, frametype, data, datalen, channel, width, height, enc, fps, ts_ms,tasktype) {
+  console.log(`【SDK ISSUE :(】 PlayBack Callback Params, current time is: ${new Date().toLocaleTimeString()}\n params from callback is`,{api_conn, frametype, data, datalen, channel, width, height, enc, fps, ts_ms, tasktype, overTime})
+  
+  if (api_conn.streamlist[channel].winindex == -1) {
+	  return;
+  }
+  if (!api_conn.streamlist[channel].firstFrame) {
+	  api_conn.streamlist[channel].firstFrame = true;
+  }
+  console.log('data && frametype != 0',data && frametype != 0)
+  if(overTime && data && frametype != 0){
+	  console.log(new Date(),"chunks中push分片文件",new Date().getTime())
+	  chunks.push(data);
+  }
+  if(overTime){
+	myFunction(ts_ms,overTime)
+  }
+ 
+  
+  if (frametype != 0) {
+	  data.recvtime = new Date().getTime();
+	  
+	  playerList[api_conn.streamlist[channel].winindex].fillframe_v2(data, datalen, enc, ts_ms, width, height, frametype);
+	 
+  } else {
+	  if (api_conn.streamlist[channel].isSound) {
+		  
+		  audioPlay(data, enc, datalen, width);
+
+	  }
+  }
 };
 
 /**
@@ -217,8 +264,22 @@ ConnectApi.onp2perror = function (api_conn, code) {
 ConnectApi.ondisconnect = function (api_conn, code) {
 	console.log(code);
 	console.log((api_conn.deviceid ? api_conn.deviceid : api_conn.ip) + '设备断开连接');
+	
+	console.log('p2p连接断开回调',api_conn, sessionList)
 	if (api_conn) {
-		
+		let remoteModal = document.querySelector('.remote-Modal')
+		if (remoteModal) {
+			let loading = document.querySelector('.loading-view')
+			loading.style.display = 'none'
+			remoteModal.remove()
+			for (let i = 0; i < sessionList.length; i++) {
+				if (sessionList[i].deviceid === api_conn.deviceid) {
+					sessionList.splice(i, 1);
+					break;
+				}
+
+			}
+		}
 	}
 };
 
@@ -265,7 +326,7 @@ ConnectApi.onptzresult = function (api_conn, result) {
 ConnectApi.onsearchrec = function (api_conn, channel, file_type, file_begintime, file_endtime, file_total) {
 
 	// console.log(new Date(file_begintime * 1000) + new Date(file_endtime * 1000));
-
+	ConnectApi.onRecordFetch(file_type, file_begintime, file_endtime,SearchRecList.length);
 	let data = {};
 	data.eseeid = api_conn.deviceid;
 	data.ip = api_conn.ip;
@@ -334,12 +395,28 @@ ConnectApi.onclosestream = function (api_conn, channel, streamid, result) {
  * @param {number} result 状态码
  */
 ConnectApi.onremotesetup = function (api_conn, str, data_size, result) {
-	// console.log('远程设置回调', api_conn, str);
+	console.log('远程设置回调', api_conn, str);
+	if(str){
+		ConnectApi.onRemoteSetup(str);
+	}
 	if (str || result == 0) {
 		try {
-			// console.log(api_conn, JSON.parse(str), result)
-
-
+			console.log('远程设置回调成功', api_conn, JSON.parse(str), result)
+			let data = JSON.parse(str)
+			data.deviceid = api_conn.deviceid
+			console.log('isremoteing', isremoteing)
+			console.log(data.option)
+			if (isremoteing) {
+				isremoteing = false
+				remoteDeviceStore.setConfigStatu = data
+				onRemoteFunc()
+			} else {
+				data.success = true
+				remoteDeviceStore.deviceInfo = {...data}
+			}
+			// Object.keys(data).forEach((item, index) => {
+			// 	listenersRemoteDeviceInfo[item] = data[item]
+			// })
 		} catch (error) {
 			str = str.substring(0, str.length - 1);
 			// console.log('远程设置回调，设置错误，数据出错无法解析');
@@ -355,9 +432,9 @@ ConnectApi.onremotesetup = function (api_conn, str, data_size, result) {
 //对讲回调onvop2pcallresult
 ConnectApi.onvop2pcallresult = function (api_conn, result) {
 	if(result === 0){
-		console.log('发起对讲成功');
+		console.log('发起/断开对讲成功');
 	} else {
-		console.log('发起对讲失败，错误码：' + result, api_conn);
+		console.log('发起/断开对讲失败，错误码：' + result, api_conn);
 	}
 }
 /**
@@ -366,13 +443,26 @@ ConnectApi.onvop2pcallresult = function (api_conn, result) {
  * @param {array} playerArr 播放器数组，里面存放canvas元素，每个元素代表一个播放窗体
  */
 Player.init = function (playerArr) {
+	console.log('playerArr',playerArr)
+	// for(var i = 0; i< playerArr.length; i++){
+	// 	var w = playerArr[i].width;
+	// 	var h = playerArr[i].height;
+	// 	var context = playerArr[i].getContext("2d");
+	// 	context.clearRect(0, 0, w, h);
+	// }
+
+	// for(var i = 0; i< playerList.length; i++){
+	// 	playerList[i].close();
+	// 	playerList[i].deinit();
+	// 	delete playerList[i];
+	// }
 	playerList = [];
 	for (let i = 0; i < playerArr.length; i++) {
 		//初始化canvas播放器
 		//参数1 canvas 用于显示画面的画布
 		//参数2 直接指定为false即可
 		//参数3 用于回调的上下文，从0开始，每创建一个都需要加1
-		let player = new kp2pPlayer(playerArr[i], false, i);
+		let player = new kp2pPlayer(playerArr[i], false, i, true);
 		playerList.push(player)
 	}
 }
@@ -391,7 +481,7 @@ Player.init = function (playerArr) {
  * 
  * 注:ID和IP至少要有一个，优先使用ID连接，有IP则port必传
  */
-Player.ConnectDevice = function (devid, ip, user, pwd, winindex, port, connectType, channel, streamid) {
+Player.ConnectDevice = function (devid, ip, user, pwd, winindex, port, connectType, channel, streamid, wss, cb) {
 
 	//ID连接
 	if (devid) {
@@ -400,6 +490,7 @@ Player.ConnectDevice = function (devid, ip, user, pwd, winindex, port, connectTy
 		//初始化连接对象
 		if (session == null) {
 			session = ConnectApi.create(winindex, CryptoJS);
+			console.log(ConnectApi);
 			session.refs = 0;
 			session.logined = false;
 			session.user = user;
@@ -425,7 +516,13 @@ Player.ConnectDevice = function (devid, ip, user, pwd, winindex, port, connectTy
 		}
 
 		if (bConnect) {
-			ConnectApi.connectbyid(session, devid, useHttps);
+			if(wss == "wss"){
+				useHttps = true;
+			}
+			else{
+				useHttps = false;
+			}
+			ConnectApi.connectbyid(session, devid, useHttps, cb);
 		}
 		// else {
 		//     ConnectApi.open_stream(session, channel, streamid);
@@ -677,7 +774,7 @@ Player.Stopsearch = function (id, ip) {
 }
 
 /**
- * 开始回放
+ * 开始回放 onrecvrecframe
  * * @function Playbackplay
  
  * @param {number} id 设备id
@@ -688,9 +785,10 @@ Player.Stopsearch = function (id, ip) {
 * @param {string} type 录像类型，15为全部
 * @param {string} winindex 窗体索引
 * @param {string} isSound 是否开启音频
+* @param {int} tasktype 是否下载
  */
-Player.StartPlayBack = function (id, ip, channel, begintime, endtime, type, winindex, isSound) {
-	// console.log(id, ip, channel, begintime, endtime, type);
+Player.StartPlayBack = function (id, ip, channel, begintime, endtime, type, winindex, isSound, tasktype) {
+	console.log("下载",id, ip, channel, begintime, endtime, type, winindex, isSound, tasktype);
 
 	let session = null;
 	if (id) {
@@ -707,13 +805,68 @@ Player.StartPlayBack = function (id, ip, channel, begintime, endtime, type, wini
 		if (isSound) {
 			session.streamlist[channel].isSound = true;
 		}
-		ConnectApi.replay_start(session, channel, begintime, endtime, type)
-		console.log(channel, begintime, endtime, type);
+		ConnectApi.replay_start(session, channel, begintime, endtime, type, tasktype)
+		console.log('StartPlayBack中的replay_start参数',channel, begintime, endtime, type);
+		if(tasktype==1) return;
+		console.log('回放播放')
 		playerList[winindex].open()
 		// player1.open()
 	}
 
 	// ConnectApi.replay_start(session, channel, starttime, endtime, type)
+}
+
+Player.SetStreamMode = function(id, ip, channel, streaMode){
+	let session = null;
+	if (id) {
+		session = GetSessionById(id);
+	} else {
+		session = GetSessionByIp(ip);
+	}	
+	if (session != null && session.logined) {
+		var winIndex = session.streamlist[channel].winindex;
+		
+		playerList[winIndex].SetStreamMode(streaMode);
+	}
+}
+
+Player.PlayFast = function(id, ip, channel){
+	let session = null;
+	if (id) {
+		session = GetSessionById(id);
+	} else {
+		session = GetSessionByIp(ip);
+	}
+	if (session != null && session.logined) {
+		var winIndex = session.streamlist[channel].winindex;
+		playerList[winIndex].fast();
+	}
+}
+
+Player.PlaySlow = function(id, ip, channel){
+	let session = null;
+	if (id) {
+		session = GetSessionById(id);
+	} else {
+		session = GetSessionByIp(ip);
+	}
+	if (session != null && session.logined) {
+		var winIndex = session.streamlist[channel].winindex;
+		playerList[winIndex].slow();
+	}
+}
+
+Player.PlayNormal = function(id, ip, channel){
+	let session = null;
+	if (id) {
+		session = GetSessionById(id);
+	} else {
+		session = GetSessionByIp(ip);
+	}
+	if (session != null && session.logined) {
+		var winIndex = session.streamlist[channel].winindex;
+		playerList[winIndex].reset();
+	}
 }
 
 /**
@@ -796,6 +949,7 @@ Player.StopPlayBack = function (id, ip, channel) {
  */
 
 Player.RemoteSetting = function (id, ip, str) {
+	console.log('开始远处设置', id, ip, str)
 	let session = null;
 	if (id) {
 		session = GetSessionById(id);
@@ -928,12 +1082,12 @@ Player.CallHangup = function (id, ip, channel) {
 * @method Snapshot
 * @param { number }     winindex 窗体索引值，必填
 * @param { mode }       mode 截图方式 0：使用指定窗口的canvas画布进行截图 1：使用指定窗口的下一帧码流数据进行截图
-* @param { string }     name 文件名称，需要带格式，目前支持png和jpg，缺省值：snapshot.png
+* @param { string }     name 文件名称，需要带格式，目前支持png和jpeg，默认值：snapshot.png
 * @param { number }     width 生成的图片宽度 传空则根据截图方式使用canvas宽度或使用码流宽度，需要和图片高度一起传
 * @param { number }     height 生成的图片高度 传空则根据截图方式使用canvas高度或使用码流高度，需要和图片宽度一起传
-* @param { function }   callback 截图回调，需要图片数据时通过回调获取，不进行图片下载，传空默认直接使用a标签下载图片
-* callback param 回调内的参数，callback回调后传进去的参数
-* @param { string } 	dataURL 以dataURL的形式保存的图片数据
+* @param { function }   callback 截图回调，需要图片数据时通过回调获取，不进行图片下载，传空默认直接下载图片
+* callback param 回调内的参数，callback回调后传入的参数
+* @param { string } 	dataURL 以dataURL的形式保存的图片数据，通过回调获取
 */
 Player.Snapshot = function (winindex, mode, name, width, height, callback) {
 	let session = GetSessionByWinindex(winindex);
@@ -970,4 +1124,32 @@ Player.CleanFrame = function name(winindex) {
  */
  Player.SetPlaybackTimeCallback = function (winindex, callback) {
 	playerList[winindex].setPlaybackTimeCallback(callback)
+}
+
+
+/**
+* 开始录像
+* @method ctrlRecordOn
+* @param { number }     winindex 窗体索引值，必填
+* @param { string }     name 文件名称，需要带格式，目前支持MP4和webm
+* @param { number }     width 生成的视频宽度 传空则使用canvas宽度或使用码流宽度
+* @param { number }     height 生成的视频高度 传空则使用canvas高度或使用码流高度
+*/
+
+Player.ctrlRecordOn = function (winindex, name, width, height){
+	let session = GetSessionByWinindex(winindex);
+	if (session != null) {
+		playerList[winindex].ctrlRecord(name, width, height)
+	}
+}
+/**
+* 结束录像
+* @method ctrlRecordOn
+* @param { number }     winindex 窗体索引值，必填
+*/
+Player.ctrlRecordOff = function (winindex){
+	let session = GetSessionByWinindex(winindex);
+	if (session != null) {
+		playerList[winindex].ctrlRecordOff()
+	}
 }
