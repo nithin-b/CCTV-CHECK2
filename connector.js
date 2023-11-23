@@ -4459,7 +4459,11 @@
           (l.onopen = e), (l.onclose = t), (l.onerror = n), (l.ondata = r);
         }),
         (l.connect = function (e, t, n, r, i) {
-          var o = (i ? "wss" : "ws") + "://" + t + ":" + n;
+          var useHttps = window.location.origin.includes("localhost")
+            ? true
+            : false;
+          var o = (useHttps ? "ws" : "wss") + "://" + t + ":" + n;
+          // var o = (i ? "wss" : "ws") + "://" + t + ":" + n;
           console.log(o);
           var a = {
             key: e,
@@ -5577,8 +5581,11 @@
                 200 != t.status &&
                 A.onconnect(e, e.ctx, -12);
           };
-          var n = "http://";
-          e.usehttps && (n = "https://");
+          var useHttp = window.location.origin.includes("localhost")
+            ? "http://"
+            : "https://";
+          var n = useHttp;
+          e.usehttps && (n = useHttp);
           var r = M(e.uid, e.usehttps);
           e.uid = (function (e) {
             if (e.length <= 10) return console.log(e), e;
