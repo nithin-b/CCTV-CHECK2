@@ -172,7 +172,7 @@ function myFunction(ts_ms,overTime) {
 
 var chunks = [];
 ConnectApi.onrecvrecframe = function (api_conn, frametype, data, datalen, channel, width, height, enc, fps, ts_ms,tasktype) {
-  console.log(`【SDK ISSUE :(】 PlayBack Callback Params, current time is: ${new Date().toLocaleTimeString()}\n params from callback is`,{api_conn, frametype, data, datalen, channel, width, height, enc, fps, ts_ms, tasktype, overTime})
+    console.log(`【SDK ISSUE :(】 PlayBack Callback Params, current time is: ${new Date().toLocaleTimeString()}\n params from callback is`,{api_conn, frametype, data, datalen, channel, width, height, enc, fps, ts_ms, tasktype, overTime})
   
   if (api_conn.streamlist[channel].winindex == -1) {
 	  return;

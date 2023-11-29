@@ -1726,6 +1726,7 @@ var resolv_domain = function(sn, usehttps){
 		playbacktodown(startTime,endTime,'255')
 	}
 	ConnectApi.onRecordFetch = function(file_type, file_begintime, file_endtime,INDEX){
+		console.log('file_type, file_begintime, file_endtime,INDEX',file_type, file_begintime, file_endtime,INDEX)
 		var recListTable = document.getElementById("recListTable");
 		
 		const newRow = recListTable.insertRow(1);

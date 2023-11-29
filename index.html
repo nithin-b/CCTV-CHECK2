@@ -222,6 +222,7 @@
 	}
 
 	ConnectApi.onRecordFetch = function(file_type, file_begintime, file_endtime,INDEX){
+		
 		var recListTable = document.getElementById("recListTable");
 		
 		const newRow = recListTable.insertRow(1);
@@ -247,7 +248,6 @@
 
 		td_index.innerText = INDEX
 		console.log(`【SDK ISSUE :(】the INDEX is:${INDEX}, the dom is:${td_index}, the dom text is ${td_index.innerText}`, )
-
 		td_begin.innerText = new Date((file_begintime+ new Date().getTimezoneOffset() *60) * 1000).toLocaleString();	
 		td_end.innerText = new Date((file_endtime+ new Date().getTimezoneOffset() *60) * 1000).toLocaleString();
 		td_times.innerText = file_endtime - file_begintime;
@@ -394,7 +394,7 @@
 		var streamid = parseInt(document.getElementById("streamtype").value);
 		var channel = parseInt(document.getElementById("channel").value);
 		// Player.ConnectDevice(devid, '', user, pwd, 0, 80, 0, channel, streamid)
-		Player.ConnectDevice(devid, '', user, pwd, 0, 80, 0, channel, streamid, "ws")
+		Player.ConnectDevice(devid, '', user, pwd, 0, 80, 0, channel, streamid, "wss")
 	}
 	function disconnect(params) {
 		var devid = document.getElementById("dev_id").value;
